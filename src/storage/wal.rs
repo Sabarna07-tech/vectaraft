@@ -24,6 +24,7 @@ pub enum WalRecord {
     }
 }
 
+#[derive(Clone)]
 pub struct Wal {
     path: PathBuf,
 }

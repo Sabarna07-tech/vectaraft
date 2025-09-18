@@ -24,3 +24,8 @@ rayon = "1"
 [build-dependencies]
 tonic-build = "0.12"
 prost-build = "0.13"
+protoc-bin-vendored = "3"
+
+[dev-dependencies]
+serial_test = "2"
+tempfile = "3"

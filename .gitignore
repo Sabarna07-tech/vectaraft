@@ -1,1 +1,5 @@
 /target
+.venv/
+clients/python/_gen/
+clients/python/vector_db_pb2*.py
+data/

@@ -48,7 +48,12 @@ impl FlatIndex {
         if nq == 0.0 || nv == 0.0 { 0.0 } else { dot / (nq * nv) }
     }
 
-    pub fn search_topk(&self, query: &[f32], top_k: usize) -> Vec<(usize, f32)> {
+    pub fn search_topk(
+        &self,
+        query: &[f32],
+        top_k: usize,
+        metric_override: Option<crate::types::Metric>,
+    ) -> Vec<(usize, f32)> {
         assert_eq!(query.len(), self.dim);
         if self.len() == 0 || top_k == 0 { return vec![]; }
 
@@ -56,7 +61,8 @@ impl FlatIndex {
         let mut best: Vec<(usize, f32)> = (0..self.len()).into_par_iter().map(|i| {
             let off = i * self.dim;
             let v = &self.vectors[off..off + self.dim];
-            let score = match self.metric {
+            let metric = metric_override.unwrap_or(self.metric);
+            let score = match metric {
                 crate::types::Metric::L2 => Self::l2(query, v),
                 crate::types::Metric::IP => Self::dot(query, v),
                 crate::types::Metric::Cosine => Self::cosine(query, v),

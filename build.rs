@@ -7,6 +7,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     fs::create_dir_all(&out_dir)?;
 
+    let protoc_path = protoc_bin_vendored::protoc_bin_path()?;
+    env::set_var("PROTOC", &protoc_path);
+    let include = protoc_bin_vendored::include_path()?;
+    env::set_var("PROTOC_INCLUDE", &include);
+
     let proto = proto_dir.join("vector_db.proto");
     if !proto.exists() {
         panic!("Missing proto file: {}", proto.display());

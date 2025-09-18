@@ -82,11 +82,16 @@ docker run --rm -p 50051:50051 -v ${PWD}/data:/data vectaraft:dev
 ## Operational notes
 
 - Environment / flags:
-  - `VECTARAFT_ENABLE_WAL=0|1`
-  - `VECTARAFT_WAL_PATH=...`
-  - `--no-wal`, `--wal-path <file>`
+- `VECTARAFT_ENABLE_WAL=0|1`
+- `VECTARAFT_WAL_PATH=...`
+- `--no-wal`, `--wal-path <file>`
+- `VECTARAFT_ENABLE_METRICS=0|1`
+- `VECTARAFT_METRICS_ADDR=host:port`
+- `--no-metrics`, `--metrics-addr <addr>`
 - Persistence check: stop the server, restart with the same WAL path, re-query—data should survive.
 - Port conflicts: `netstat -ano | findstr :50051` then `taskkill /PID <pid> /F`.
+
+Metrics are exposed on `/metrics` (Prometheus text format) and default to `127.0.0.1:9100`.
 
 ## Roadmap before public release
 

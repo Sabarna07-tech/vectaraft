@@ -12,6 +12,7 @@ pub mod catalog;
 pub mod index;
 pub mod storage;
 pub mod types;
+pub mod telemetry;
 
 pub mod server {
     pub mod state;

@@ -20,6 +20,8 @@ parking_lot = "0.12"
 bytes = "1"
 uuid = { version = "1", features = ["v4"] }
 rayon = "1"
+prometheus = "0.13"
+axum = { version = "0.7", features = ["macros"] }
 
 [build-dependencies]
 tonic-build = "0.12"

@@ -15,11 +15,13 @@ use crate::pb::vectordb::v1::{
 use crate::server::state::DbState;
 use crate::storage::wal::WalRecord;
 use crate::types::Metric;
+use crate::telemetry::Metrics;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct VectorDbService {
     pub state: Arc<DbState>,
+    pub metrics: Option<Arc<Metrics>>,
 }
 
 fn now_ms() -> i64 {
@@ -29,12 +31,33 @@ fn now_ms() -> i64 {
         .unwrap_or_default()
 }
 
+impl VectorDbService {
+    fn record_metric<S: AsRef<str>>(&self, method: &str, status: S) {
+        if let Some(metrics) = &self.metrics {
+            metrics.record_grpc(method, status.as_ref());
+        }
+    }
+
+    fn refresh_inventory_metrics(&self) {
+        if let Some(metrics) = &self.metrics {
+            metrics.set_collection_count(self.state.catalog.len());
+            metrics.set_point_count(self.state.catalog.total_points());
+        }
+    }
+
+    fn fail<T>(&self, method: &str, status: Status) -> Result<T, Status> {
+        self.record_metric(method, status.code().to_string());
+        Err(status)
+    }
+}
+
 #[tonic::async_trait]
 impl VectorDb for VectorDbService {
     async fn ping(
         &self,
         _req: Request<PingRequest>,
     ) -> Result<Response<PingResponse>, Status> {
+        self.record_metric("Ping", "OK");
         Ok(Response::new(PingResponse {}))
     }
 
@@ -44,10 +67,10 @@ impl VectorDb for VectorDbService {
     ) -> Result<Response<CreateCollectionResponse>, Status> {
         let req = req.into_inner();
         if req.name.is_empty() {
-            return Err(Status::invalid_argument("collection name must be provided"));
+            return self.fail("CreateCollection", Status::invalid_argument("collection name must be provided"));
         }
         if req.dims == 0 {
-            return Err(Status::invalid_argument("dims must be greater than zero"));
+            return self.fail("CreateCollection", Status::invalid_argument("dims must be greater than zero"));
         }
         let metric = Metric::from_str(&req.metric);
         let created = self
@@ -55,7 +78,7 @@ impl VectorDb for VectorDbService {
             .catalog
             .create_collection(req.name.clone(), req.dims as usize, metric);
         if !created {
-            return Err(Status::already_exists("collection already exists"));
+            return self.fail("CreateCollection", Status::already_exists("collection already exists"));
         }
         self.state.append_wal(WalRecord::CreateCollection {
             name: req.name,
@@ -63,6 +86,8 @@ impl VectorDb for VectorDbService {
             metric: req.metric,
             ts_ms: now_ms(),
         });
+        self.refresh_inventory_metrics();
+        self.record_metric("CreateCollection", "OK");
         Ok(Response::new(CreateCollectionResponse {}))
     }
 
@@ -72,13 +97,14 @@ impl VectorDb for VectorDbService {
     ) -> Result<Response<UpsertResponse>, Status> {
         let req = req.into_inner();
         if req.collection.is_empty() {
-            return Err(Status::invalid_argument("collection must be specified"));
+            return self.fail("Upsert", Status::invalid_argument("collection must be specified"));
         }
         let Some(handle) = self.state.catalog.get(&req.collection) else {
-            return Err(Status::not_found("collection not found"));
+            return self.fail("Upsert", Status::not_found("collection not found"));
         };
 
         if req.points.is_empty() {
+            self.record_metric("Upsert", "OK");
             return Ok(Response::new(UpsertResponse { upserted: 0 }));
         }
 
@@ -92,7 +118,7 @@ impl VectorDb for VectorDbService {
                 point.id
             };
             if point.vector.is_empty() {
-                return Err(Status::invalid_argument("point vector must not be empty"));
+                return self.fail("Upsert", Status::invalid_argument("point vector must not be empty"));
             }
             let payload = point.payload_json;
             wal_records.push(WalRecord::Upsert {
@@ -109,14 +135,16 @@ impl VectorDb for VectorDbService {
             });
         }
 
-        let inserted = handle
-            .upsert_points(prepared)
-            .ok_or_else(|| Status::invalid_argument("vector dimension mismatch"))?;
+        let inserted = match handle.upsert_points(prepared) {
+            Some(v) => v,
+            None => return self.fail("Upsert", Status::invalid_argument("vector dimension mismatch")),
+        };
 
         for record in wal_records {
             self.state.append_wal(record);
         }
-
+        self.refresh_inventory_metrics();
+        self.record_metric("Upsert", "OK");
         Ok(Response::new(UpsertResponse {
             upserted: inserted as u32,
         }))
@@ -146,9 +174,10 @@ impl VectorDb for VectorDbService {
             .into_iter()
             .map(|f| (f.key, f.equals))
             .collect();
-        let hits = handle
-            .search(req.vector, req.top_k as usize, metric_override, filters)
-            .ok_or_else(|| Status::invalid_argument("query vector dimension mismatch"))?;
+        let hits = match handle.search(req.vector, req.top_k as usize, metric_override, filters) {
+            Some(h) => h,
+            None => return self.fail("Query", Status::invalid_argument("query vector dimension mismatch")),
+        };
         let mut resp = QueryResponse { hits: Vec::with_capacity(hits.len()) };
         for (id, score, payload) in hits {
             resp.hits.push(ScoredPoint {
@@ -157,6 +186,7 @@ impl VectorDb for VectorDbService {
                 payload_json: if req.with_payloads { payload } else { String::new() },
             });
         }
+        self.record_metric("Query", "OK");
         Ok(Response::new(resp))
     }
 }

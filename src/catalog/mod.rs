@@ -135,6 +135,15 @@ impl Catalog {
             None
         }
     }
+
+    pub fn len(&self) -> usize {
+        self.inner.read().len()
+    }
+
+    pub fn total_points(&self) -> usize {
+        let guard = self.inner.read();
+        guard.values().map(|collection| collection.index.len()).sum()
+    }
 }
 
 #[derive(Clone)]

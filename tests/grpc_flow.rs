@@ -29,7 +29,7 @@ fn state_with_temp_wal() -> (Arc<DbState>, std::path::PathBuf, tempfile::TempDir
 #[serial]
 async fn create_upsert_query_roundtrip() {
     let (state, _wal_path, _guard) = state_with_temp_wal();
-    let svc = VectorDbService { state: state.clone() };
+    let svc = VectorDbService { state: state.clone(), metrics: None };
 
     svc.create_collection(Request::new(CreateCollectionRequest {
         name: "demo".into(),
@@ -96,7 +96,7 @@ async fn create_upsert_query_roundtrip() {
 #[serial]
 async fn wal_replay_restores_points() {
     let (state, wal_path, guard) = state_with_temp_wal();
-    let svc = VectorDbService { state: state.clone() };
+    let svc = VectorDbService { state: state.clone(), metrics: None };
 
     svc.create_collection(Request::new(CreateCollectionRequest {
         name: "demo".into(),
@@ -127,7 +127,7 @@ async fn wal_replay_restores_points() {
     let state = Arc::new(DbState::with_config(config));
     // Keep guard alive until end of test.
     let _guard = guard;
-    let svc = VectorDbService { state };
+    let svc = VectorDbService { state, metrics: None };
 
     let hits = svc
         .query(Request::new(QueryRequest {
@@ -159,7 +159,7 @@ async fn operations_work_without_wal() {
     let state = Arc::new(DbState::with_config(config));
     assert!(state.wal.is_none());
 
-    let svc = VectorDbService { state: state.clone() };
+    let svc = VectorDbService { state: state.clone(), metrics: None };
 
     svc.create_collection(Request::new(CreateCollectionRequest {
         name: "no-wal".into(),
